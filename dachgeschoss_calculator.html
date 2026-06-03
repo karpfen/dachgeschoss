@@ -143,6 +143,18 @@
     background: #fff; border-radius: 4px; margin-bottom: 8px;
   }
   .add-btn:hover { background: rgba(31,58,95,.06); }
+  .name-input {
+    flex: 1; min-width: 0; font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em;
+    text-transform: uppercase; font-weight: 700; color: var(--ink); border: none;
+    border-bottom: 1px solid var(--line); background: transparent; padding: 2px 0; margin-right: 8px;
+  }
+  .name-input:focus { outline: none; border-bottom-color: var(--accent); }
+  .pos-row { display: flex; gap: 8px; }
+  .pos-row select {
+    flex: 1; padding: 8px 9px; font-family: var(--sans); font-size: 14px; color: var(--ink);
+    border: 1px solid var(--line); background: #fff; border-radius: 2px; cursor: pointer;
+  }
+  .pos-row select:focus { outline: none; border-color: var(--accent); }
   .config-bar { display: flex; gap: 8px; margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--line); }
   .cfg-btn {
     flex: 1; appearance: none; cursor: pointer; padding: 10px; font-family: var(--mono); font-size: 12px;
@@ -264,7 +276,8 @@
   <aside>
     <div class="itabs" role="tablist">
       <button class="itab" aria-selected="true" data-itab="basis">Basis</button>
-      <button class="itab" aria-selected="false" data-itab="gauben">Gauben + Loggia</button>
+      <button class="itab" aria-selected="false" data-itab="gauben">Gauben</button>
+      <button class="itab" aria-selected="false" data-itab="freiflaechen">Freiflächen</button>
     </div>
 
     <div class="ipanel" id="basis">
@@ -292,25 +305,18 @@
         <label for="penalty_walls">Abschlag Wände <span class="val" id="penalty_walls_v"></span></label>
         <input type="number" lang="en" id="penalty_walls" step="1" value="0">
       </div>
-      <div class="field">
-        <label for="penalty_other">Sonstige Abschläge (z.B. Treppenhaus) <span class="val" id="penalty_other_v"></span></label>
-        <input type="number" lang="en" id="penalty_other" step="0.1" value="13">
-      </div>
     </div>
 
     <div class="ipanel" id="gauben" hidden>
       <div class="subhead">Schleppgauben <span id="gaubenCount"></span></div>
       <div id="gaubenList"></div>
       <button type="button" id="addGaube" class="add-btn">+ Gaube hinzufügen</button>
-      <div class="subhead">Loggia <span>oben links</span></div>
-      <div class="field">
-        <label for="loggia_laenge">Länge <span class="val" id="loggia_laenge_v"></span></label>
-        <input type="number" lang="en" id="loggia_laenge" step="0.1" min="0" value="4">
-      </div>
-      <div class="field">
-        <label for="loggia_breite">Breite <span class="val" id="loggia_breite_v"></span></label>
-        <input type="number" lang="en" id="loggia_breite" step="0.1" min="0" value="4">
-      </div>
+    </div>
+
+    <div class="ipanel" id="freiflaechen" hidden>
+      <div class="subhead">Freiflächen <span id="freiCount"></span></div>
+      <div id="freiList"></div>
+      <button type="button" id="addFrei" class="add-btn">+ Fläche hinzufügen</button>
     </div>
 
     <div class="config-bar">
@@ -343,7 +349,7 @@
         <span><i class="swatch" style="background:var(--c-green)"></i> ≥ 2&nbsp;m — zählt 100&nbsp;%</span>
         <span><i class="swatch" style="background:#b9b3a6"></i> Außenwand</span>
         <span><i class="swatch" style="background:#7CCA89;border:1.5px dashed #2f7d3f"></i> Schleppgaube</span>
-        <span><i class="swatch" style="background:#f0ece2;border:1.5px dashed #8c8678"></i> Loggia</span>
+        <span><i class="swatch" style="background:#f0ece2;border:1.5px dashed #8c8678"></i> Freifläche (Abzug)</span>
       </div>
     </section>
 
@@ -388,10 +394,9 @@ function calcAreaClean(l, breite, kniestock, slope, penOther, penWalls) {
   return (0.5 * area2 + area3 - penOther) * (100 - penWalls) / 100;
 }
 
-// Unified computation including any number of Schleppgauben (shed dormers, each
-// given by depth + width) and an upper-left Loggia recess. The band reclassification
-// depends only on a dormer's depth and width, so its side (left/right) is irrelevant here.
-function compute(l, b, ks, slope, po, pw, gauben, lLaenge, lBreite) {
+// Unified computation including any number of Schleppgauben (shed dormers) and
+// Freiflächen (deducted areas such as a Loggia or Treppenhaus).
+function compute(l, b, ks, slope, pw, gauben, freiflaechen) {
   const a1  = calcAbseiteN(ks, slope, 1);
   const a2  = calcAbseiteN(ks, slope, 2);
   const a22 = calcAbseiteN(ks, slope, 2.2);
@@ -402,55 +407,71 @@ function compute(l, b, ks, slope, po, pw, gauben, lLaenge, lBreite) {
   let area3 = b * l - area1 - area2;
   let area4 = b * l - a22 * l * 2;
 
-  // Schleppgauben: each raises its footprint to full height
+  // Schleppgauben: a shed dormer of depth dt has a flat ceiling at height
+  // H = ks + dt*tan(slope) (where it meets the main roof). Its whole footprint
+  // is reclassified to the band that H falls into - so a shallow, low dormer is
+  // NOT counted as full height and does NOT count toward the Vollgeschoss.
+  const tan = Math.tan(deg2rad(slope));
   (gauben || []).forEach(g => {
     const dt = Math.max(0, Math.min(g.tiefe, b / 2));   // stays on its half
     const db = Math.max(0, Math.min(g.width, l));
-    if (dt > 0 && db > 0) {
-      const g0  = db * Math.min(dt, a1);                     // was < 1 m   -> full
-      const g50 = db * Math.max(0, Math.min(dt, a2) - a1);   // was 1-2 m   -> full
-      const g22 = db * Math.min(dt, a22);                    // was < 2.2 m -> >= 2.2 m
-      area1 -= g0; area2 -= g50; area3 += g0 + g50; area4 += g22;
-    }
+    if (dt <= 0 || db <= 0) return;
+    const footprint = db * dt;
+    const H = ks + dt * tan;                            // flat dormer ceiling height
+    // remove the footprint's original sloped-roof band contributions
+    const o0  = db * Math.min(dt, a1);
+    const o50 = db * Math.max(0, Math.min(dt, a2) - a1);
+    const o100 = footprint - o0 - o50;
+    const o22 = db * Math.max(0, dt - a22);
+    area1 -= o0; area2 -= o50; area3 -= o100; area4 -= o22;
+    // add the whole footprint back at its actual (flat) height
+    if (H >= 2 - 1e-6)      area3 += footprint;
+    else if (H >= 1 - 1e-6) area2 += footprint;
+    else                    area1 += footprint;
+    if (H >= 2.2 - 1e-6)    area4 += footprint;          // only then Vollgeschoss-relevant
   });
 
-  // Loggia: upper-left corner, breite lb into the span, laenge ll along the length.
-  // Its floor is removed from every area band entirely.
-  const lb = Math.max(0, Math.min(lBreite, b));
-  const ll = Math.max(0, Math.min(lLaenge, l));
-  if (lb > 0 && ll > 0) {
-    const r0   = ll * Math.min(lb, a1);
-    const r50  = ll * Math.max(0, Math.min(lb, a2) - a1);
-    const r100 = ll * Math.max(0, lb - a2);
-    const r22  = ll * Math.max(0, lb - a22);
-    area1 -= r0; area2 -= r50; area3 -= r100; area4 -= r22;
-  }
+  // Freiflächen (e.g. Loggia, Treppenhaus): each removes its footprint from the
+  // area bands it overlaps. Its position along the width (links/mitte/rechts)
+  // decides which height bands it sits in; the length position is purely visual.
+  (freiflaechen || []).forEach(f => {
+    const fb = Math.max(0, Math.min(f.breite, b));   // extent across the span (x)
+    const fl = Math.max(0, Math.min(f.laenge, l));   // extent along the length (y)
+    if (fb <= 0 || fl <= 0) return;
+    const x0 = f.hpos === "rechts" ? b - fb : f.hpos === "mitte" ? (b - fb) / 2 : 0;
+    const x1 = x0 + fb;
+    const ov = (r0, r1) => Math.max(0, Math.min(x1, r1) - Math.max(x0, r0));
+    const d0   = fl * (ov(0, a1) + ov(b - a1, b));        // < 1 m band
+    const d50  = fl * (ov(a1, a2) + ov(b - a2, b - a1));  // 1-2 m band
+    const d100 = fl * ov(a2, b - a2);                     // >= 2 m band
+    const d22  = fl * ov(a22, b - a22);                   // >= 2.2 m
+    area1 -= d0; area2 -= d50; area3 -= d100; area4 -= d22;
+  });
 
   area1 = Math.max(0, area1); area2 = Math.max(0, area2);
   area3 = Math.max(0, area3); area4 = Math.max(0, area4);
 
   const total = area1 + area2 + area3;
-  const clean = (0.5 * area2 + area3 - po) * (100 - pw) / 100;
+  const clean = (0.5 * area2 + area3) * (100 - pw) / 100;
   return { a1, a2, a22, dh, area1, area2, area3, area4, total, clean };
 }
 
 // ---------- DOM ----------
 const $ = id => document.getElementById(id);
-const ids = ["laenge","breite","dicke","kniestock","slope",
-             "loggia_laenge","loggia_breite","penalty_walls","penalty_other"];
+const ids = ["laenge","breite","dicke","kniestock","slope","penalty_walls"];
 const num = id => parseFloat($(id).value) || 0;
 const fmt = (x, d=2) => (isFinite(x) ? x.toFixed(d) : "–");
 
 // effective interior footprint: outer dim minus wall thickness on both sides
 const effL = () => num("laenge") - 2 * num("dicke");
 const effB = () => num("breite") - 2 * num("dicke");
-const lLaenge = () => num("loggia_laenge");
-const lBreite = () => num("loggia_breite");
+
+function escAttr(s) { return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 
 // ---------- Schleppgauben (dynamic list) ----------
 let gaubenState = [
   { side:"left",  tiefe:3, start:5,  ende:15 },
-  { side:"right", tiefe:3, start:5,  ende:9  },
+  { side:"right", tiefe:3, start:2,  ende:6  },
   { side:"right", tiefe:3, start:12, ende:16 },
 ];
 
@@ -482,7 +503,48 @@ function renderGauben() {
   $("gaubenCount").textContent = gaubenState.length === 1 ? "1 Gaube" : gaubenState.length + " Gauben";
 }
 
+// ---------- Freiflächen (dynamic list of deducted areas) ----------
+let freiState = [
+  { name:"Loggia",      hpos:"links",  vpos:"oben",  laenge:4,   breite:4 },
+  { name:"Treppenhaus", hpos:"rechts", vpos:"mitte", laenge:2.6, breite:5 },
+];
+
+function getFreiflaechen() {
+  return freiState.map(f => ({ name:f.name, hpos:f.hpos, vpos:f.vpos, laenge:f.laenge, breite:f.breite }));
+}
+
+function ffield(i, key, label) {
+  const v = freiState[i][key];
+  return `<div class="field"><label>${label} <span class="val">${fmt(v,1)} m</span></label>`
+       + `<input type="number" lang="en" step="0.1" min="0" data-i="${i}" data-k="${key}" value="${v}"></div>`;
+}
+function opt(val, cur, txt) { return `<option value="${val}"${val===cur?" selected":""}>${txt}</option>`; }
+function renderFreiflaechen() {
+  const list = $("freiList");
+  list.innerHTML = freiState.map((f,i) => `
+    <div class="gaube-card">
+      <div class="gaube-head">
+        <input class="name-input" type="text" data-i="${i}" data-k="name" value="${escAttr(f.name)}" aria-label="Name">
+        <button type="button" class="del-btn" data-act="del" data-i="${i}" aria-label="Fläche entfernen">×</button>
+      </div>
+      <div class="field">
+        <label>Lage</label>
+        <div class="pos-row">
+          <select data-i="${i}" data-k="hpos">${opt("links",f.hpos,"links")}${opt("mitte",f.hpos,"mitte")}${opt("rechts",f.hpos,"rechts")}</select>
+          <select data-i="${i}" data-k="vpos">${opt("oben",f.vpos,"oben")}${opt("mitte",f.vpos,"mitte")}${opt("unten",f.vpos,"unten")}</select>
+        </div>
+      </div>
+      ${ffield(i,"laenge","Länge")}
+      ${ffield(i,"breite","Breite")}
+    </div>`).join("");
+  $("freiCount").textContent = freiState.length === 1 ? "1 Fläche" : freiState.length + " Flächen";
+}
+
 const COLORS = { "1":"#D01556","6":"#D01556","2":"#EFDC60","5":"#EFDC60","3":"#7CCA89","4":"#7CCA89" };
+
+// Gaube colours follow its flat ceiling height: green >= 2 m (full), yellow 1-2 m (half), red < 1 m
+const gaubeFill = H => H >= 2 - 1e-6 ? "#7CCA89" : H >= 1 - 1e-6 ? "#EFDC60" : "#D01556";
+const gaubeLine = H => H >= 2 - 1e-6 ? "#2f7d3f" : H >= 1 - 1e-6 ? "#8a7a16" : "#8a0e38";
 
 function setLabels() {
   $("laenge_v").textContent = fmt(num("laenge"),1) + " m";
@@ -490,10 +552,7 @@ function setLabels() {
   $("dicke_v").textContent = fmt(num("dicke"),2) + " m";
   $("kniestock_v").textContent = fmt(num("kniestock"),1) + " m";
   $("slope_v").textContent = num("slope") + " °";
-  $("loggia_laenge_v").textContent = fmt(num("loggia_laenge"),1) + " m";
-  $("loggia_breite_v").textContent = fmt(num("loggia_breite"),1) + " m";
   $("penalty_walls_v").textContent = num("penalty_walls") + " %";
-  $("penalty_other_v").textContent = fmt(num("penalty_other"),1) + " m²";
 }
 
 // ---------- SVG helpers ----------
@@ -543,7 +602,11 @@ function drawSideview() {
     const pts = band.pts.map(([x,k]) => `${sx(x + dicke).toFixed(2)},${sy(yv[k]).toFixed(2)}`).join(" ");
     svg.appendChild(el("polygon", { points:pts, fill:COLORS[band.t], stroke:"#1a1d21", "stroke-width":"0.6", "stroke-opacity":"0.35" }));
   });
-  // Schleppgauben: raised full-height rectangle on the relevant eave side
+  // Schleppgauben: raised rectangle on the relevant eave side. Several gauben can
+  // share a side; in this width-cut they overlap, so draw each distinct profile once
+  // and stack the labels so they don't collide.
+  const sideCount = { left: 0, right: 0 };
+  const drawnRect = {};
   getGauben().forEach((g, i) => {
     const dt = Math.max(0, Math.min(g.tiefe, b / 2));
     if (dt <= 0 || g.width <= 0) return;
@@ -551,12 +614,17 @@ function drawSideview() {
     const o = dicke;
     // left gaube spans x in [0, dt]; right gaube spans x in [b-dt, b]
     const x0 = g.side === "right" ? b - dt : 0, x1 = g.side === "right" ? b : dt;
-    const pts = [[x0,0],[x0,H],[x1,H],[x1,0]]
-      .map(([x,y]) => `${sx(x + o).toFixed(2)},${sy(y).toFixed(2)}`).join(" ");
-    svg.appendChild(el("polygon", { points:pts, fill:"#7CCA89", "fill-opacity":0.55,
-      stroke:"#2f7d3f", "stroke-width":1.1, "stroke-dasharray":"4 3" }));
-    const tx = el("text", { x: sx((x0+x1)/2 + o), y: sy(H) - 4,
-      "text-anchor":"middle", "font-size":"11", fill:"#2f7d3f" });
+    const key = g.side + ":" + dt.toFixed(3);
+    if (!drawnRect[key]) {
+      const pts = [[x0,0],[x0,H],[x1,H],[x1,0]]
+        .map(([x,y]) => `${sx(x + o).toFixed(2)},${sy(y).toFixed(2)}`).join(" ");
+      svg.appendChild(el("polygon", { points:pts, fill:gaubeFill(H), "fill-opacity":0.55,
+        stroke:gaubeLine(H), "stroke-width":1.1, "stroke-dasharray":"4 3" }));
+      drawnRect[key] = true;
+    }
+    const n = sideCount[g.side]++;
+    const tx = el("text", { x: sx((x0+x1)/2 + o), y: sy(H) - 4 - n * 13,
+      "text-anchor":"middle", "font-size":"11", fill:gaubeLine(H) });
     tx.textContent = "Gaube " + (i + 1); svg.appendChild(tx);
   });
   $("cap_side").textContent = `Firsthöhe ${fmt(dh,2)} m`;
@@ -601,35 +669,40 @@ function drawTopview() {
     const y0 = Math.max(0, Math.min(l - (g.start + g.width), l));   // far edge (from top)
     const y1 = Math.max(0, Math.min(l - g.start, l));               // near edge (from top)
     if (dt <= 0 || y1 - y0 <= 0) return;
+    const H = ks + dt * Math.tan(deg2rad(slope));
     const x0 = g.side === "right" ? b - dt : 0, x1 = g.side === "right" ? b : dt;
     const pts = [[x0,y0],[x0,y1],[x1,y1],[x1,y0]]
       .map(([x,y]) => `${sx(x+dicke).toFixed(2)},${sy(y+dicke).toFixed(2)}`).join(" ");
-    svg.appendChild(el("polygon", { points:pts, fill:"#7CCA89",
-      stroke:"#2f7d3f", "stroke-width":1.3, "stroke-dasharray":"4 3" }));
+    svg.appendChild(el("polygon", { points:pts, fill:gaubeFill(H),
+      stroke:gaubeLine(H), "stroke-width":1.3, "stroke-dasharray":"4 3" }));
     const tx = el("text", { x: sx((x0+x1)/2+dicke), y: sy(((y0+y1)/2)+dicke) + 4,
-      "text-anchor":"middle", "font-size":"11", fill:"#2f7d3f" });
+      "text-anchor":"middle", "font-size":"11", fill:gaubeLine(H) });
     tx.textContent = "Gaube " + (i + 1); svg.appendChild(tx);
   });
-  // Loggia recess: upper-left corner (floor removed from the calculation)
-  const lb = Math.max(0, Math.min(lBreite(), b));
-  const ll = Math.max(0, Math.min(lLaenge(), l));
-  if (lb > 0 && ll > 0) {
-    const pts = [[0,l-ll],[0,l],[lb,l],[lb,l-ll]]
+  // Freiflächen: deducted areas placed by horizontal (links/mitte/rechts) and
+  // vertical (oben/mitte/unten) anchor, labelled with their name.
+  getFreiflaechen().forEach(f => {
+    const fb = Math.max(0, Math.min(f.breite, b)), fl = Math.max(0, Math.min(f.laenge, l));
+    if (fb <= 0 || fl <= 0) return;
+    const x0 = f.hpos === "rechts" ? b - fb : f.hpos === "mitte" ? (b - fb) / 2 : 0;
+    const y0 = f.vpos === "oben" ? l - fl : f.vpos === "unten" ? 0 : (l - fl) / 2;
+    const x1 = x0 + fb, y1 = y0 + fl;
+    const pts = [[x0,y0],[x0,y1],[x1,y1],[x1,y0]]
       .map(([x,y]) => `${sx(x+dicke).toFixed(2)},${sy(y+dicke).toFixed(2)}`).join(" ");
     svg.appendChild(el("polygon", { points:pts, fill:"#f0ece2",
       stroke:"#8c8678", "stroke-width":1.2, "stroke-dasharray":"3 3" }));
-    const tx = el("text", { x: sx((lb/2)+dicke), y: sy((l - ll/2)+dicke) + 4,
+    const tx = el("text", { x: sx(((x0+x1)/2)+dicke), y: sy(((y0+y1)/2)+dicke) + 4,
       "text-anchor":"middle", "font-size":"10", fill:"#8c8678" });
-    tx.textContent = "Loggia"; svg.appendChild(tx);
-  }
+    tx.textContent = f.name; svg.appendChild(tx);
+  });
   $("cap_top").textContent = `${fmt(Bout,1)} × ${fmt(Lout,1)} m`;
 }
 
 // ---------- Table ----------
 function renderTable() {
   const l = effL(), b = effB();
-  const r = compute(l, b, num("kniestock"), num("slope"), num("penalty_other"), num("penalty_walls"),
-                    getGauben(), lLaenge(), lBreite());
+  const r = compute(l, b, num("kniestock"), num("slope"), num("penalty_walls"),
+                    getGauben(), getFreiflaechen());
 
   const laengen = [
     ["Dachhöhe [m]", r.dh],
@@ -667,8 +740,8 @@ const RDYLBU = ["#a50026","#d73027","#f46d43","#fdae61","#fee090","#ffffbf",
 
 function drawSizes() {
   const svg = $("sizes"); clear(svg);
-  const l = effL(), b = effB(), pw = num("penalty_walls"), po = num("penalty_other");
-  const gauben = getGauben(), lL = lLaenge(), lB = lBreite();
+  const l = effL(), b = effB(), pw = num("penalty_walls");
+  const gauben = getGauben(), frei = getFreiflaechen();
   const W = 760, H = 460, m = { l:64, r:18, t:18, b:46 };
   const SMIN = 25, SMAX = 60;
   const slopes = []; for (let s=SMIN; s<=SMAX; s++) slopes.push(s);
@@ -677,7 +750,7 @@ function drawSizes() {
   // compute series (gauben + loggia folded in via compute())
   const series = knies.map((k,i) => ({
     k, color: RDYLBU[i],
-    data: slopes.map(s => ({ x:s, y: compute(l, b, k, s, po, pw, gauben, lL, lB).clean }))
+    data: slopes.map(s => ({ x:s, y: compute(l, b, k, s, pw, gauben, frei).clean }))
   }));
 
   let yMin = Infinity, yMax = -Infinity;
@@ -789,10 +862,37 @@ $("addGaube").addEventListener("click", () => {
   update();
 });
 
+// dynamic Freiflächen list
+$("freiList").addEventListener("input", e => {
+  const inp = e.target; if (!inp.dataset || inp.dataset.k === undefined) return;
+  const i = +inp.dataset.i, k = inp.dataset.k;
+  if (k === "name" || k === "hpos" || k === "vpos") {
+    freiState[i][k] = inp.value;
+  } else {
+    freiState[i][k] = parseFloat(inp.value) || 0;
+    const val = inp.closest(".field").querySelector(".val");
+    if (val) val.textContent = fmt(freiState[i][k], 1) + " m";
+  }
+  update();
+});
+$("freiList").addEventListener("click", e => {
+  const btn = e.target.closest("button"); if (!btn) return;
+  if (btn.dataset.act === "del") {
+    freiState.splice(+btn.dataset.i, 1);
+    renderFreiflaechen();
+    update();
+  }
+});
+$("addFrei").addEventListener("click", () => {
+  freiState.push({ name:"Fläche", hpos:"links", vpos:"oben", laenge:2, breite:2 });
+  renderFreiflaechen();
+  update();
+});
+
 // ---------- Save / Load configuration ----------
-const CFG_FIELDS = ["laenge","breite","dicke","kniestock","slope","loggia_laenge","loggia_breite","penalty_walls","penalty_other"];
+const CFG_FIELDS = ["laenge","breite","dicke","kniestock","slope","penalty_walls"];
 function gatherConfig() {
-  const cfg = { version: 1, gauben: gaubenState };
+  const cfg = { version: 2, gauben: gaubenState, freiflaechen: freiState };
   CFG_FIELDS.forEach(id => cfg[id] = num(id));
   return cfg;
 }
@@ -804,7 +904,16 @@ function applyConfig(cfg) {
       tiefe: +g.tiefe || 0, start: +g.start || 0, ende: +g.ende || 0
     }));
   }
+  if (Array.isArray(cfg.freiflaechen)) {
+    freiState = cfg.freiflaechen.map(f => ({
+      name: f.name != null ? String(f.name) : "Fläche",
+      hpos: ["links","mitte","rechts"].includes(f.hpos) ? f.hpos : "links",
+      vpos: ["oben","mitte","unten"].includes(f.vpos) ? f.vpos : "oben",
+      laenge: +f.laenge || 0, breite: +f.breite || 0
+    }));
+  }
   renderGauben();
+  renderFreiflaechen();
   update();
 }
 $("saveCfg").addEventListener("click", () => {
@@ -828,6 +937,7 @@ $("loadFile").addEventListener("change", e => {
 });
 
 renderGauben();
+renderFreiflaechen();
 update();
 </script>
 </body>
