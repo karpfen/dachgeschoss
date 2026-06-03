@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<!--
+  Dachgeschossflächen — Wohnflächenrechner
+
+  MIT License
+  Copyright (c) 2026 Andreas Petutschnig <andreas@petutschnig.de>
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+-->
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dachgeschossflächen</title>
+<style>
+  :root {
+    --ink:       #1a1d21;
+    --ink-soft:  #565d66;
+    --paper:     #f4f1ea;
+    --panel:     #fbfaf6;
+    --line:      #d7d1c4;
+    --line-soft: #e8e3d8;
+    --accent:    #1f3a5f;
+    --c-red:     #D01556;
+    --c-yellow:  #EFDC60;
+    --c-green:   #7CCA89;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--sans);
+    color: var(--ink);
+    background: var(--paper);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    border-bottom: 2px solid var(--ink);
+    padding: 20px clamp(20px, 4vw, 56px) 16px;
+    background: var(--paper);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px 30px;
+    flex-wrap: wrap;
+  }
+  .header-left { flex: 1 1 280px; min-width: 0; }
+  .header-right { display: flex; gap: 26px; flex-wrap: wrap; align-items: flex-start; }
+  .panel { min-width: 184px; }
+  .panel h2 {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--ink-soft); margin: 0 0 10px;
+  }
+  header .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 6px;
+  }
+  header h1 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(28px, 4vw, 44px);
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+  header p {
+    margin: 8px 0 0; max-width: 52ch;
+    color: var(--ink-soft); font-size: 14px;
+  }
+  .wrap {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 0;
+    align-items: stretch;
+  }
+  @media (max-width: 880px) { .wrap { grid-template-columns: 1fr; } }
+
+  /* ---- Controls ---- */
+  aside {
+    border-right: 1px solid var(--line);
+    padding: 28px clamp(20px, 3vw, 32px);
+    background: var(--panel);
+  }
+  @media (max-width: 880px) { aside { border-right: none; border-bottom: 1px solid var(--line); } }
+  .itabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: -4px 0 24px; }
+  .itab {
+    appearance: none; border: none; background: none; cursor: pointer;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--ink-soft); padding: 9px 12px 11px; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .itab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+  .ipanel[hidden] { display: none; }
+  .ipanel .subhead:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+  .field { margin-bottom: 22px; }
+  .subhead {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--ink); font-weight: 700; margin: 4px 0 14px; padding-top: 14px;
+    border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .subhead span { font-weight: 400; letter-spacing: 0.02em; text-transform: none; color: var(--ink-soft); font-size: 11px; }
+  .gaube-card { border: 1px solid var(--line); border-radius: 4px; padding: 13px 13px 0; margin-bottom: 12px; background: #fff; }
+  .gaube-card .field { margin-bottom: 13px; }
+  .gaube-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .gaube-title { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 700; }
+  .gaube-actions { display: flex; gap: 6px; align-items: center; }
+  .side-btn {
+    appearance: none; cursor: pointer; font-family: var(--mono); font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.08em; padding: 4px 11px; border: 1px solid var(--accent); color: var(--accent);
+    background: #fff; border-radius: 999px;
+  }
+  .side-btn:hover { background: var(--accent); color: #fff; }
+  .del-btn {
+    appearance: none; cursor: pointer; border: 1px solid var(--line); background: #fff; color: var(--ink-soft);
+    width: 24px; height: 24px; border-radius: 50%; font-size: 16px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .del-btn:hover { border-color: var(--c-red); color: var(--c-red); }
+  .add-btn {
+    appearance: none; cursor: pointer; width: 100%; padding: 10px; font-family: var(--mono); font-size: 12px;
+    letter-spacing: 0.06em; text-transform: uppercase; border: 1px dashed var(--accent); color: var(--accent);
+    background: #fff; border-radius: 4px; margin-bottom: 8px;
+  }
+  .add-btn:hover { background: rgba(31,58,95,.06); }
+  .config-bar { display: flex; gap: 8px; margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--line); }
+  .cfg-btn {
+    flex: 1; appearance: none; cursor: pointer; padding: 10px; font-family: var(--mono); font-size: 12px;
+    letter-spacing: 0.06em; text-transform: uppercase; border: 1px solid var(--accent);
+    background: var(--accent); color: #fff; border-radius: 3px;
+  }
+  .cfg-btn:hover { background: #16314f; }
+  .field label {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--ink-soft); margin-bottom: 7px; font-weight: 600;
+  }
+  .field label .val {
+    font-family: var(--mono); font-size: 13px; color: var(--accent);
+    text-transform: none; letter-spacing: 0;
+  }
+  input[type="number"] {
+    width: 100%; padding: 9px 11px; font-family: var(--mono); font-size: 15px;
+    border: 1px solid var(--line); background: #fff; color: var(--ink);
+    border-radius: 2px;
+  }
+  input[type="number"]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(31,58,95,.12); }
+  input[type="range"] { width: 100%; accent-color: var(--accent); margin: 4px 0 0; }
+
+  /* ---- Results table ---- */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td { padding: 5px 0; border-bottom: 1px dotted var(--line); }
+  td.name { color: var(--ink-soft); }
+  td.num { font-family: var(--mono); text-align: right; color: var(--ink); padding-left: 16px; white-space: nowrap; }
+  tr.highlight td { font-weight: 700; color: var(--accent); border-bottom: 1px solid var(--ink); }
+  tr.highlight td.name { color: var(--accent); }
+
+  /* ---- Main panel ---- */
+  main { padding: 26px clamp(20px, 4vw, 48px) 56px; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 24px; }
+  .tab {
+    appearance: none; border: none; background: none; cursor: pointer;
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-soft); padding: 10px 16px; border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+  .tabpanel[hidden] { display: none; }
+
+  .views { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+  @media (max-width: 1100px) { .views { grid-template-columns: 1fr; } }
+  figure { margin: 0; }
+  figcaption {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--ink-soft); margin-bottom: 12px;
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  figcaption .dim { color: var(--accent); }
+  .plot { width: 100%; border: 1px solid var(--line); background: #fff; border-radius: 2px; display: block; }
+  svg text { font-family: var(--mono); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px 22px; margin-top: 18px; font-size: 13px; color: var(--ink-soft); }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .swatch { width: 14px; height: 14px; border: 1px solid rgba(0,0,0,.2); border-radius: 2px; display: inline-block; }
+
+  .vollgeschoss { flex: 0 1 220px; min-width: 200px; }
+  .vollgeschoss h2 { font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--ink-soft); margin: 0 0 10px; }
+  .vg-card { border: 1px solid; border-radius: 3px; padding: 11px 14px; transition: background .2s, border-color .2s; }
+  .vg-card table { width: 100%; font-size: 13px; }
+  .vg-card td { padding: 4px 0; border-bottom: 1px dotted rgba(0,0,0,.12); }
+  .vg-card tr:last-child td { border-bottom: none; }
+  .vg-card td.name { color: var(--ink-soft); }
+  .vg-card td.num { font-family: var(--mono); text-align: right; white-space: normal; padding-left: 10px; }
+  .vg-card.ok   { background: #eef7ef; border-color: var(--c-green); }
+  .vg-card.over { background: #fbe9ef; border-color: var(--c-red); }
+  .vg-status { display: flex; align-items: center; gap: 9px; font-weight: 700;
+    font-size: 14px; margin-bottom: 8px; letter-spacing: 0.01em; }
+  .vg-card.ok   .vg-status { color: #2f7d3f; }
+  .vg-card.over .vg-status { color: #b01049; }
+  .vg-dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
+  .vg-card.ok   .vg-dot { background: var(--c-green); }
+  .vg-card.over .vg-dot { background: var(--c-red); }
+
+  footer { padding: 22px clamp(20px,4vw,48px); border-top: 1px solid var(--line);    font-size: 12.5px; color: var(--ink-soft); background: var(--panel); }
+  footer code { font-family: var(--mono); background: #fff; border: 1px solid var(--line-soft); padding: 1px 5px; border-radius: 3px; }
+  footer a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--line); }
+  footer a:hover { border-bottom-color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <div class="header-left">
+    <div class="eyebrow">Wohnflächenberechnung · Dachgeschoss</div>
+    <h1>Dachgeschossflächen</h1>
+    <p>Nutzbare Fläche unter der Dachschräge nach Höhenanteilen: unter 1&nbsp;m zählt 0&nbsp;%, zwischen 1&nbsp;m und 2&nbsp;m zählt 50&nbsp;%, ab 2&nbsp;m voll.</p>
+  </div>
+  <div class="header-right">
+    <div class="panel">
+      <h2>Längen</h2>
+      <table><tbody id="laengenBody"></tbody></table>
+    </div>
+    <div class="panel">
+      <h2>Flächen</h2>
+      <table><tbody id="flaechenBody"></tbody></table>
+    </div>
+    <div class="vollgeschoss">
+      <h2>Vollgeschoss-Prüfung</h2>
+      <div class="vg-card" id="vgCard">
+        <div class="vg-status"><span class="vg-dot"></span><span id="vgStatusText"></span></div>
+        <table>
+          <tbody>
+            <tr><td class="name">Fläche ≥ 2.2 m</td><td class="num" id="vgArea"></td></tr>
+            <tr><td class="name">Anteil an Grundfläche</td><td class="num" id="vgPct"></td></tr>
+            <tr><td class="name">Grenze (2/3)</td><td class="num" id="vgLimit"></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <aside>
+    <div class="itabs" role="tablist">
+      <button class="itab" aria-selected="true" data-itab="basis">Basis</button>
+      <button class="itab" aria-selected="false" data-itab="gauben">Gauben + Loggia</button>
+    </div>
+
+    <div class="ipanel" id="basis">
+      <div class="field">
+        <label for="laenge">Länge <span class="val" id="laenge_v"></span></label>
+        <input type="number" lang="en" id="laenge" step="0.1" value="20">
+      </div>
+      <div class="field">
+        <label for="breite">Breite <span class="val" id="breite_v"></span></label>
+        <input type="number" lang="en" id="breite" step="0.1" value="10">
+      </div>
+      <div class="field">
+        <label for="dicke">Dicke Außenwände <span class="val" id="dicke_v"></span></label>
+        <input type="number" lang="en" id="dicke" step="0.01" value="0.35">
+      </div>
+      <div class="field">
+        <label for="kniestock">Kniestock <span class="val" id="kniestock_v"></span></label>
+        <input type="range" id="kniestock" min="0" max="1" step="0.1" value="0">
+      </div>
+      <div class="field">
+        <label for="slope">Dachneigung <span class="val" id="slope_v"></span></label>
+        <input type="range" id="slope" min="25" max="60" step="1" value="45">
+      </div>
+      <div class="field">
+        <label for="penalty_walls">Abschlag Wände <span class="val" id="penalty_walls_v"></span></label>
+        <input type="number" lang="en" id="penalty_walls" step="1" value="0">
+      </div>
+      <div class="field">
+        <label for="penalty_other">Sonstige Abschläge (z.B. Treppenhaus) <span class="val" id="penalty_other_v"></span></label>
+        <input type="number" lang="en" id="penalty_other" step="0.1" value="13">
+      </div>
+    </div>
+
+    <div class="ipanel" id="gauben" hidden>
+      <div class="subhead">Schleppgauben <span id="gaubenCount"></span></div>
+      <div id="gaubenList"></div>
+      <button type="button" id="addGaube" class="add-btn">+ Gaube hinzufügen</button>
+      <div class="subhead">Loggia <span>oben links</span></div>
+      <div class="field">
+        <label for="loggia_laenge">Länge <span class="val" id="loggia_laenge_v"></span></label>
+        <input type="number" lang="en" id="loggia_laenge" step="0.1" min="0" value="4">
+      </div>
+      <div class="field">
+        <label for="loggia_breite">Breite <span class="val" id="loggia_breite_v"></span></label>
+        <input type="number" lang="en" id="loggia_breite" step="0.1" min="0" value="4">
+      </div>
+    </div>
+
+    <div class="config-bar">
+      <button type="button" id="saveCfg" class="cfg-btn">Speichern</button>
+      <button type="button" id="loadCfg" class="cfg-btn">Laden</button>
+      <input type="file" id="loadFile" accept="application/json,.json" hidden>
+    </div>
+  </aside>
+
+  <main>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-target="ansichten">Ansichten</button>
+      <button class="tab" role="tab" aria-selected="false" data-target="groessen">Fläche/Kniestock</button>
+    </div>
+
+    <section class="tabpanel" id="ansichten" role="tabpanel">
+      <div class="views">
+        <figure>
+          <figcaption>Querschnitt <span class="dim" id="cap_side"></span></figcaption>
+          <svg class="plot" id="sideview" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid meet"></svg>
+        </figure>
+        <figure>
+          <figcaption>Draufsicht <span class="dim" id="cap_top"></span></figcaption>
+          <svg class="plot" id="topview" viewBox="0 0 400 800" preserveAspectRatio="xMidYMid meet"></svg>
+        </figure>
+      </div>
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--c-red)"></i> Höhe &lt; 1&nbsp;m — zählt 0&nbsp;%</span>
+        <span><i class="swatch" style="background:var(--c-yellow)"></i> 1–2&nbsp;m — zählt 50&nbsp;%</span>
+        <span><i class="swatch" style="background:var(--c-green)"></i> ≥ 2&nbsp;m — zählt 100&nbsp;%</span>
+        <span><i class="swatch" style="background:#b9b3a6"></i> Außenwand</span>
+        <span><i class="swatch" style="background:#7CCA89;border:1.5px dashed #2f7d3f"></i> Schleppgaube</span>
+        <span><i class="swatch" style="background:#f0ece2;border:1.5px dashed #8c8678"></i> Loggia</span>
+      </div>
+    </section>
+
+    <section class="tabpanel" id="groessen" role="tabpanel" hidden>
+      <figure>
+        <figcaption>Bereinigte Fläche je Dachneigung &amp; Kniestock</figcaption>
+        <svg class="plot" id="sizes" viewBox="0 0 760 460" preserveAspectRatio="xMidYMid meet" style="background:#fff"></svg>
+      </figure>
+      <div class="legend" id="sizesLegend"></div>
+    </section>
+  </main>
+</div>
+
+<footer>
+  MIT-Lizenz · © 2026 Andreas Petutschnig · <a href="mailto:andreas@petutschnig.de">andreas@petutschnig.de</a>
+</footer>
+
+<script>
+"use strict";
+
+// ---------- Math (1:1 from app.R) ----------
+const deg2rad = d => d * Math.PI / 180;
+
+function calcAbseiteN(kniestock, slope, n) {
+  if (kniestock >= n) return 0;
+  return (n - kniestock) / Math.tan(deg2rad(slope));
+}
+const calcDachhoehe = (slope, breite, kniestock) => Math.tan(deg2rad(slope)) * breite / 2 + kniestock;
+const calcArea1 = (a1, l) => a1 * l * 2;
+const calcArea2 = (a1, a2, l) => (a2 * l * 2) - calcArea1(a1, l);
+const calcArea3 = (breite, l, a1, a2) => (breite * l) - a1 - a2;
+function calcArea4(breite, l, kniestock, slope) {
+  const a22 = calcAbseiteN(kniestock, slope, 2.2);
+  return (breite * l) - (l * a22 * 2);
+}
+function calcAreaClean(l, breite, kniestock, slope, penOther, penWalls) {
+  const a1 = calcAbseiteN(kniestock, slope, 1);
+  const a2 = calcAbseiteN(kniestock, slope, 2);
+  const area1 = calcArea1(a1, l);
+  const area2 = calcArea2(a1, a2, l);
+  const area3 = calcArea3(breite, l, area1, area2);
+  return (0.5 * area2 + area3 - penOther) * (100 - penWalls) / 100;
+}
+
+// Unified computation including any number of Schleppgauben (shed dormers, each
+// given by depth + width) and an upper-left Loggia recess. The band reclassification
+// depends only on a dormer's depth and width, so its side (left/right) is irrelevant here.
+function compute(l, b, ks, slope, po, pw, gauben, lLaenge, lBreite) {
+  const a1  = calcAbseiteN(ks, slope, 1);
+  const a2  = calcAbseiteN(ks, slope, 2);
+  const a22 = calcAbseiteN(ks, slope, 2.2);
+  const dh  = calcDachhoehe(slope, b, ks);
+
+  let area1 = a1 * l * 2;
+  let area2 = a2 * l * 2 - area1;
+  let area3 = b * l - area1 - area2;
+  let area4 = b * l - a22 * l * 2;
+
+  // Schleppgauben: each raises its footprint to full height
+  (gauben || []).forEach(g => {
+    const dt = Math.max(0, Math.min(g.tiefe, b / 2));   // stays on its half
+    const db = Math.max(0, Math.min(g.width, l));
+    if (dt > 0 && db > 0) {
+      const g0  = db * Math.min(dt, a1);                     // was < 1 m   -> full
+      const g50 = db * Math.max(0, Math.min(dt, a2) - a1);   // was 1-2 m   -> full
+      const g22 = db * Math.min(dt, a22);                    // was < 2.2 m -> >= 2.2 m
+      area1 -= g0; area2 -= g50; area3 += g0 + g50; area4 += g22;
+    }
+  });
+
+  // Loggia: upper-left corner, breite lb into the span, laenge ll along the length.
+  // Its floor is removed from every area band entirely.
+  const lb = Math.max(0, Math.min(lBreite, b));
+  const ll = Math.max(0, Math.min(lLaenge, l));
+  if (lb > 0 && ll > 0) {
+    const r0   = ll * Math.min(lb, a1);
+    const r50  = ll * Math.max(0, Math.min(lb, a2) - a1);
+    const r100 = ll * Math.max(0, lb - a2);
+    const r22  = ll * Math.max(0, lb - a22);
+    area1 -= r0; area2 -= r50; area3 -= r100; area4 -= r22;
+  }
+
+  area1 = Math.max(0, area1); area2 = Math.max(0, area2);
+  area3 = Math.max(0, area3); area4 = Math.max(0, area4);
+
+  const total = area1 + area2 + area3;
+  const clean = (0.5 * area2 + area3 - po) * (100 - pw) / 100;
+  return { a1, a2, a22, dh, area1, area2, area3, area4, total, clean };
+}
+
+// ---------- DOM ----------
+const $ = id => document.getElementById(id);
+const ids = ["laenge","breite","dicke","kniestock","slope",
+             "loggia_laenge","loggia_breite","penalty_walls","penalty_other"];
+const num = id => parseFloat($(id).value) || 0;
+const fmt = (x, d=2) => (isFinite(x) ? x.toFixed(d) : "–");
+
+// effective interior footprint: outer dim minus wall thickness on both sides
+const effL = () => num("laenge") - 2 * num("dicke");
+const effB = () => num("breite") - 2 * num("dicke");
+const lLaenge = () => num("loggia_laenge");
+const lBreite = () => num("loggia_breite");
+
+// ---------- Schleppgauben (dynamic list) ----------
+let gaubenState = [
+  { side:"left",  tiefe:3, start:5,  ende:15 },
+  { side:"right", tiefe:3, start:5,  ende:9  },
+  { side:"right", tiefe:3, start:12, ende:16 },
+];
+
+// {side, tiefe, start, width}; width = ende - start
+function getGauben() {
+  return gaubenState.map(g => ({ side:g.side, tiefe:g.tiefe, start:g.start, width:g.ende - g.start }));
+}
+
+function gfield(i, key, label) {
+  const v = gaubenState[i][key];
+  return `<div class="field"><label>${label} <span class="val">${fmt(v,1)} m</span></label>`
+       + `<input type="number" lang="en" step="0.1" min="0" data-i="${i}" data-k="${key}" value="${v}"></div>`;
+}
+function renderGauben() {
+  const list = $("gaubenList");
+  list.innerHTML = gaubenState.map((g,i) => `
+    <div class="gaube-card">
+      <div class="gaube-head">
+        <span class="gaube-title">Gaube ${i+1}</span>
+        <div class="gaube-actions">
+          <button type="button" class="side-btn" data-act="side" data-i="${i}">${g.side==="left"?"links":"rechts"}</button>
+          <button type="button" class="del-btn" data-act="del" data-i="${i}" aria-label="Gaube entfernen">×</button>
+        </div>
+      </div>
+      ${gfield(i,"tiefe","Tiefe")}
+      ${gfield(i,"start","Start ab Ecke")}
+      ${gfield(i,"ende","Ende ab Ecke")}
+    </div>`).join("");
+  $("gaubenCount").textContent = gaubenState.length === 1 ? "1 Gaube" : gaubenState.length + " Gauben";
+}
+
+const COLORS = { "1":"#D01556","6":"#D01556","2":"#EFDC60","5":"#EFDC60","3":"#7CCA89","4":"#7CCA89" };
+
+function setLabels() {
+  $("laenge_v").textContent = fmt(num("laenge"),1) + " m";
+  $("breite_v").textContent = fmt(num("breite"),1) + " m";
+  $("dicke_v").textContent = fmt(num("dicke"),2) + " m";
+  $("kniestock_v").textContent = fmt(num("kniestock"),1) + " m";
+  $("slope_v").textContent = num("slope") + " °";
+  $("loggia_laenge_v").textContent = fmt(num("loggia_laenge"),1) + " m";
+  $("loggia_breite_v").textContent = fmt(num("loggia_breite"),1) + " m";
+  $("penalty_walls_v").textContent = num("penalty_walls") + " %";
+  $("penalty_other_v").textContent = fmt(num("penalty_other"),1) + " m²";
+}
+
+// ---------- SVG helpers ----------
+const SVGNS = "http://www.w3.org/2000/svg";
+function el(tag, attrs) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+function clear(svg) { while (svg.firstChild) svg.removeChild(svg.firstChild); }
+
+// ---------- Views ----------
+function bandsX(b, a1, a2) {
+  // 6 bands, 4 points each: [x, y-key]
+  return [
+    {t:"1", pts:[[0,"ks"],[0,"0"],[a1,"0"],[a1,"1"]]},
+    {t:"2", pts:[[a1,"1"],[a1,"0"],[a2,"0"],[a2,"2"]]},
+    {t:"3", pts:[[a2,"2"],[a2,"0"],[b/2,"0"],[b/2,"dh"]]},
+    {t:"4", pts:[[b/2,"dh"],[b/2,"0"],[b-a2,"0"],[b-a2,"2"]]},
+    {t:"5", pts:[[b-a2,"2"],[b-a2,"0"],[b-a1,"0"],[b-a1,"1"]]},
+    {t:"6", pts:[[b-a1,"1"],[b-a1,"0"],[b,"0"],[b,"ks"]]},
+  ];
+}
+
+function drawSideview() {
+  const svg = $("sideview"); clear(svg);
+  const dicke = num("dicke"), Bout = num("breite");
+  const b = effB(), ks = num("kniestock"), slope = num("slope");
+  const a1 = calcAbseiteN(ks, slope, 1), a2 = calcAbseiteN(ks, slope, 2);
+  const dh = calcDachhoehe(slope, b, ks);
+  const W = 400, H = 400, pad = 8;
+  // domain 0..Bout on both axes (equal aspect, to scale)
+  const dom = Math.max(Bout, 0.001);
+  const sx = x => pad + (x / dom) * (W - 2*pad);
+  const sy = y => H - pad - (y / dom) * (H - 2*pad);
+  // grey exterior walls (rise to the eave = Kniestock height)
+  if (dicke > 0) {
+    [[0, dicke], [Bout - dicke, Bout]].forEach(([x0,x1]) => {
+      const pts = [[x0,0],[x0,ks],[x1,ks],[x1,0]]
+        .map(([x,y]) => `${sx(x).toFixed(2)},${sy(y).toFixed(2)}`).join(" ");
+      svg.appendChild(el("polygon", { points:pts, fill:"#b9b3a6", stroke:"#8c8678", "stroke-width":0.6 }));
+    });
+  }
+  // interior roof bands, shifted in by the wall thickness
+  const yv = { "ks":ks, "0":0, "1":1, "2":2, "dh":dh };
+  bandsX(b, a1, a2).forEach(band => {
+    const pts = band.pts.map(([x,k]) => `${sx(x + dicke).toFixed(2)},${sy(yv[k]).toFixed(2)}`).join(" ");
+    svg.appendChild(el("polygon", { points:pts, fill:COLORS[band.t], stroke:"#1a1d21", "stroke-width":"0.6", "stroke-opacity":"0.35" }));
+  });
+  // Schleppgauben: raised full-height rectangle on the relevant eave side
+  getGauben().forEach((g, i) => {
+    const dt = Math.max(0, Math.min(g.tiefe, b / 2));
+    if (dt <= 0 || g.width <= 0) return;
+    const H = ks + dt * Math.tan(deg2rad(slope));   // flat ceiling = roof height at depth dt
+    const o = dicke;
+    // left gaube spans x in [0, dt]; right gaube spans x in [b-dt, b]
+    const x0 = g.side === "right" ? b - dt : 0, x1 = g.side === "right" ? b : dt;
+    const pts = [[x0,0],[x0,H],[x1,H],[x1,0]]
+      .map(([x,y]) => `${sx(x + o).toFixed(2)},${sy(y).toFixed(2)}`).join(" ");
+    svg.appendChild(el("polygon", { points:pts, fill:"#7CCA89", "fill-opacity":0.55,
+      stroke:"#2f7d3f", "stroke-width":1.1, "stroke-dasharray":"4 3" }));
+    const tx = el("text", { x: sx((x0+x1)/2 + o), y: sy(H) - 4,
+      "text-anchor":"middle", "font-size":"11", fill:"#2f7d3f" });
+    tx.textContent = "Gaube " + (i + 1); svg.appendChild(tx);
+  });
+  $("cap_side").textContent = `Firsthöhe ${fmt(dh,2)} m`;
+}
+
+function drawTopview() {
+  const svg = $("topview"); clear(svg);
+  const dicke = num("dicke"), Bout = num("breite"), Lout = num("laenge");
+  const b = effB(), l = effL(), ks = num("kniestock"), slope = num("slope");
+  const a1 = calcAbseiteN(ks, slope, 1), a2 = calcAbseiteN(ks, slope, 2);
+  // coord_fixed ratio = 1: equal scale on both axes, over the OUTER footprint
+  const pad = 8;
+  const domB = Math.max(Bout, 0.001), domL = Math.max(Lout, 0.001);
+  const ppm = (400 - 2*pad) / domB;          // pixels per metre
+  const H = ppm * domL + 2*pad;
+  svg.setAttribute("viewBox", `0 0 400 ${H.toFixed(1)}`);
+  const sx = x => pad + ppm * x;
+  const sy = y => H - pad - ppm * y;
+  // grey exterior walls = full outer rectangle (interior gets painted over)
+  if (dicke > 0) {
+    const outer = [[0,0],[0,Lout],[Bout,Lout],[Bout,0]]
+      .map(([x,y]) => `${sx(x).toFixed(2)},${sy(y).toFixed(2)}`).join(" ");
+    svg.appendChild(el("polygon", { points:outer, fill:"#b9b3a6", stroke:"#8c8678", "stroke-width":0.6 }));
+  }
+  // interior strips by the same x boundaries, shifted in by the wall thickness
+  const xs = [
+    {t:"1", x0:0,      x1:a1},
+    {t:"2", x0:a1,     x1:a2},
+    {t:"3", x0:a2,     x1:b/2},
+    {t:"4", x0:b/2,    x1:b-a2},
+    {t:"5", x0:b-a2,   x1:b-a1},
+    {t:"6", x0:b-a1,   x1:b},
+  ];
+  xs.forEach(s => {
+    const pts = [[s.x0,0],[s.x0,l],[s.x1,l],[s.x1,0]]
+      .map(([x,y]) => `${sx(x+dicke).toFixed(2)},${sy(y+dicke).toFixed(2)}`).join(" ");
+    svg.appendChild(el("polygon", { points:pts, fill:COLORS[s.t], stroke:"#1a1d21", "stroke-width":"0.5", "stroke-opacity":"0.3" }));
+  });
+  // Schleppgauben footprints: start/ende measured from the TOP corner (y = l), on their eave side
+  getGauben().forEach((g, i) => {
+    const dt = Math.max(0, Math.min(g.tiefe, b / 2));
+    const y0 = Math.max(0, Math.min(l - (g.start + g.width), l));   // far edge (from top)
+    const y1 = Math.max(0, Math.min(l - g.start, l));               // near edge (from top)
+    if (dt <= 0 || y1 - y0 <= 0) return;
+    const x0 = g.side === "right" ? b - dt : 0, x1 = g.side === "right" ? b : dt;
+    const pts = [[x0,y0],[x0,y1],[x1,y1],[x1,y0]]
+      .map(([x,y]) => `${sx(x+dicke).toFixed(2)},${sy(y+dicke).toFixed(2)}`).join(" ");
+    svg.appendChild(el("polygon", { points:pts, fill:"#7CCA89",
+      stroke:"#2f7d3f", "stroke-width":1.3, "stroke-dasharray":"4 3" }));
+    const tx = el("text", { x: sx((x0+x1)/2+dicke), y: sy(((y0+y1)/2)+dicke) + 4,
+      "text-anchor":"middle", "font-size":"11", fill:"#2f7d3f" });
+    tx.textContent = "Gaube " + (i + 1); svg.appendChild(tx);
+  });
+  // Loggia recess: upper-left corner (floor removed from the calculation)
+  const lb = Math.max(0, Math.min(lBreite(), b));
+  const ll = Math.max(0, Math.min(lLaenge(), l));
+  if (lb > 0 && ll > 0) {
+    const pts = [[0,l-ll],[0,l],[lb,l],[lb,l-ll]]
+      .map(([x,y]) => `${sx(x+dicke).toFixed(2)},${sy(y+dicke).toFixed(2)}`).join(" ");
+    svg.appendChild(el("polygon", { points:pts, fill:"#f0ece2",
+      stroke:"#8c8678", "stroke-width":1.2, "stroke-dasharray":"3 3" }));
+    const tx = el("text", { x: sx((lb/2)+dicke), y: sy((l - ll/2)+dicke) + 4,
+      "text-anchor":"middle", "font-size":"10", fill:"#8c8678" });
+    tx.textContent = "Loggia"; svg.appendChild(tx);
+  }
+  $("cap_top").textContent = `${fmt(Bout,1)} × ${fmt(Lout,1)} m`;
+}
+
+// ---------- Table ----------
+function renderTable() {
+  const l = effL(), b = effB();
+  const r = compute(l, b, num("kniestock"), num("slope"), num("penalty_other"), num("penalty_walls"),
+                    getGauben(), lLaenge(), lBreite());
+
+  const laengen = [
+    ["Dachhöhe [m]", r.dh],
+    ["Abseite < 1 m [m]", r.a1],
+    ["Abseite < 2 m [m]", r.a2],
+  ];
+  const flaechen = [
+    ["Fläche < 1 m [m²]", r.area1],
+    ["Fläche < 2 m [m²]", r.area2],
+    ["Fläche ≥ 2 m [m²]", r.area3],
+    ["Fläche gesamt [m²]", r.total],
+  ];
+  const row = ([n,v]) => `<tr><td class="name">${n}</td><td class="num">${fmt(v,2)}</td></tr>`;
+  $("laengenBody").innerHTML = laengen.map(row).join("");
+  $("flaechenBody").innerHTML = flaechen.map(row).join("")
+    + `<tr class="highlight"><td class="name">Wohnfläche bereinigt [m²]</td><td class="num">${fmt(r.clean,2)}</td></tr>`;
+
+  // ---- Vollgeschoss-Prüfung ----
+  const grund = num("laenge") * num("breite"); // total house footprint = 100% reference
+  const limit = grund * 2 / 3;                 // two-thirds threshold
+  const pct = grund > 0 ? r.area4 / grund * 100 : 0;
+  const isVollgeschoss = r.area4 > limit;      // > 2/3 of the house footprint -> Vollgeschoss
+  const card = $("vgCard");
+  card.className = "vg-card " + (isVollgeschoss ? "over" : "ok");
+  $("vgStatusText").textContent = isVollgeschoss ? "Neues Vollgeschoss" : "Kein neues Vollgeschoss";
+  $("vgArea").textContent = fmt(r.area4, 2) + " m²";
+  $("vgPct").textContent = fmt(pct, 1) + " %";
+  $("vgLimit").textContent = fmt(limit, 2) + " m²";
+}
+
+// ---------- Sweep chart ----------
+// RdYlBu-like palette, 11 stops (kniestock 0.0 .. 1.0)
+const RDYLBU = ["#a50026","#d73027","#f46d43","#fdae61","#fee090","#ffffbf",
+                "#e0f3f8","#abd9e9","#74add1","#4575b4","#313695"];
+
+function drawSizes() {
+  const svg = $("sizes"); clear(svg);
+  const l = effL(), b = effB(), pw = num("penalty_walls"), po = num("penalty_other");
+  const gauben = getGauben(), lL = lLaenge(), lB = lBreite();
+  const W = 760, H = 460, m = { l:64, r:18, t:18, b:46 };
+  const SMIN = 25, SMAX = 60;
+  const slopes = []; for (let s=SMIN; s<=SMAX; s++) slopes.push(s);
+  const knies = []; for (let k=0; k<=10; k++) knies.push(k/10);
+
+  // compute series (gauben + loggia folded in via compute())
+  const series = knies.map((k,i) => ({
+    k, color: RDYLBU[i],
+    data: slopes.map(s => ({ x:s, y: compute(l, b, k, s, po, pw, gauben, lL, lB).clean }))
+  }));
+
+  let yMin = Infinity, yMax = -Infinity;
+  series.forEach(se => se.data.forEach(p => { if (isFinite(p.y)) { yMin=Math.min(yMin,p.y); yMax=Math.max(yMax,p.y);} }));
+  if (!isFinite(yMin)) { yMin = 0; yMax = 1; }
+  if (yMin === yMax) { yMin -= 1; yMax += 1; }
+  const padY = (yMax - yMin) * 0.06; yMin -= padY; yMax += padY;
+
+  const px = x => m.l + (x - SMIN) / (SMAX - SMIN) * (W - m.l - m.r);
+  const py = y => H - m.b - (y - yMin) / (yMax - yMin) * (H - m.t - m.b);
+
+  // gridlines + y ticks
+  const yticks = 6;
+  for (let i=0;i<=yticks;i++){
+    const yv = yMin + (yMax-yMin)*i/yticks;
+    const yy = py(yv);
+    svg.appendChild(el("line",{x1:m.l,y1:yy,x2:W-m.r,y2:yy,stroke:"#e8e3d8","stroke-width":1}));
+    const t = el("text",{x:m.l-10,y:yy+4,"text-anchor":"end","font-size":"11",fill:"#565d66"});
+    t.textContent = yv.toFixed(0); svg.appendChild(t);
+  }
+  // x ticks
+  [25,30,40,50,60].forEach(s=>{
+    const xx = px(s);
+    svg.appendChild(el("line",{x1:xx,y1:m.t,x2:xx,y2:H-m.b,stroke:"#f0ece2","stroke-width":1}));
+    const t = el("text",{x:xx,y:H-m.b+20,"text-anchor":"middle","font-size":"11",fill:"#565d66"});
+    t.textContent = s; svg.appendChild(t);
+  });
+  // axes
+  svg.appendChild(el("line",{x1:m.l,y1:H-m.b,x2:W-m.r,y2:H-m.b,stroke:"#1a1d21","stroke-width":1.2}));
+  svg.appendChild(el("line",{x1:m.l,y1:m.t,x2:m.l,y2:H-m.b,stroke:"#1a1d21","stroke-width":1.2}));
+  // axis labels
+  const xl = el("text",{x:(m.l+W-m.r)/2,y:H-8,"text-anchor":"middle","font-size":"12",fill:"#1a1d21"});
+  xl.textContent = "Dachneigung [°]"; svg.appendChild(xl);
+  const yl = el("text",{x:16,y:(m.t+H-m.b)/2,"text-anchor":"middle","font-size":"12",fill:"#1a1d21",transform:`rotate(-90 16 ${(m.t+H-m.b)/2})`});
+  yl.textContent = "Bereinigte Fläche [m²]"; svg.appendChild(yl);
+
+  // lines + points
+  series.forEach(se => {
+    const d = se.data.filter(p=>isFinite(p.y)).map((p,i)=>`${i?"L":"M"}${px(p.x).toFixed(2)},${py(p.y).toFixed(2)}`).join(" ");
+    svg.appendChild(el("path",{d, fill:"none", stroke:se.color, "stroke-width":1.8, "stroke-linejoin":"round"}));
+  });
+  // marker at current slope for each series
+  const curS = num("slope");
+  series.forEach(se=>{
+    const p = se.data.find(d=>d.x===curS);
+    if (p && isFinite(p.y)) svg.appendChild(el("circle",{cx:px(p.x),cy:py(p.y),r:2.6,fill:se.color}));
+  });
+  // current-slope guide
+  svg.appendChild(el("line",{x1:px(curS),y1:m.t,x2:px(curS),y2:H-m.b,stroke:"#1f3a5f","stroke-width":1,"stroke-dasharray":"3 3","stroke-opacity":0.6}));
+
+  // legend
+  const leg = $("sizesLegend");
+  leg.innerHTML = series.map(se =>
+    `<span><i class="swatch" style="background:${se.color}"></i> ${se.k.toFixed(1)} m</span>`).join("");
+}
+
+// ---------- Wire up ----------
+function update() {
+  setLabels();
+  renderTable();
+  drawSideview();
+  drawTopview();
+  drawSizes();
+}
+ids.forEach(id => { $(id).addEventListener("input", update); });
+
+// output tabs
+document.querySelectorAll(".tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", t === tab));
+    document.querySelectorAll(".tabpanel").forEach(p => p.hidden = (p.id !== tab.dataset.target));
+    if (tab.dataset.target === "groessen") drawSizes();
+  });
+});
+
+// input tabs (sidebar)
+document.querySelectorAll(".itab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".itab").forEach(t => t.setAttribute("aria-selected", t === tab));
+    document.querySelectorAll(".ipanel").forEach(p => p.hidden = (p.id !== tab.dataset.itab));
+  });
+});
+
+// dynamic gauben list
+$("gaubenList").addEventListener("input", e => {
+  const inp = e.target; if (!inp.dataset || inp.dataset.k === undefined) return;
+  const i = +inp.dataset.i, k = inp.dataset.k;
+  gaubenState[i][k] = parseFloat(inp.value) || 0;
+  const val = inp.closest(".field").querySelector(".val");
+  if (val) val.textContent = fmt(gaubenState[i][k], 1) + " m";
+  update();
+});
+$("gaubenList").addEventListener("click", e => {
+  const btn = e.target.closest("button"); if (!btn) return;
+  const i = +btn.dataset.i;
+  if (btn.dataset.act === "side") {
+    gaubenState[i].side = gaubenState[i].side === "left" ? "right" : "left";
+    btn.textContent = gaubenState[i].side === "left" ? "links" : "rechts";
+    update();
+  } else if (btn.dataset.act === "del") {
+    gaubenState.splice(i, 1);
+    renderGauben();
+    update();
+  }
+});
+$("addGaube").addEventListener("click", () => {
+  gaubenState.push({ side:"left", tiefe:2, start:0, ende:4 });
+  renderGauben();
+  update();
+});
+
+// ---------- Save / Load configuration ----------
+const CFG_FIELDS = ["laenge","breite","dicke","kniestock","slope","loggia_laenge","loggia_breite","penalty_walls","penalty_other"];
+function gatherConfig() {
+  const cfg = { version: 1, gauben: gaubenState };
+  CFG_FIELDS.forEach(id => cfg[id] = num(id));
+  return cfg;
+}
+function applyConfig(cfg) {
+  CFG_FIELDS.forEach(id => { if (cfg[id] !== undefined && $(id)) $(id).value = cfg[id]; });
+  if (Array.isArray(cfg.gauben)) {
+    gaubenState = cfg.gauben.map(g => ({
+      side: g.side === "right" ? "right" : "left",
+      tiefe: +g.tiefe || 0, start: +g.start || 0, ende: +g.ende || 0
+    }));
+  }
+  renderGauben();
+  update();
+}
+$("saveCfg").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(gatherConfig(), null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "dachgeschoss-konfiguration.json";
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+});
+$("loadCfg").addEventListener("click", () => $("loadFile").click());
+$("loadFile").addEventListener("change", e => {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try { applyConfig(JSON.parse(reader.result)); }
+    catch (err) { alert("Konnte Konfiguration nicht laden: " + err.message); }
+  };
+  reader.readAsText(file);
+  e.target.value = "";
+});
+
+renderGauben();
+update();
+</script>
+</body>
+</html>
