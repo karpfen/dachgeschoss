@@ -453,7 +453,29 @@ function compute(l, b, ks, slope, pw, gauben, freiflaechen) {
 
   const total = area1 + area2 + area3;
   const clean = (0.5 * area2 + area3) * (100 - pw) / 100;
-  return { a1, a2, a22, dh, area1, area2, area3, area4, total, clean };
+
+  // Volume approximation
+  // Base volume: rectangle (ks) + triangle (ridge-ks)
+  const hAvg = (ks + dh) / 2;
+  let volume = (b * l) * hAvg;
+  // Subtract Freiflächen volume (approximate by their footprint * height at center)
+  (freiflaechen || []).forEach(f => {
+    const fb = Math.max(0, Math.min(f.breite, b)), fl = Math.max(0, Math.min(f.laenge, l));
+    if (fb <= 0 || fl <= 0) return;
+    const xc = (f.hpos === "rechts" ? b - fb/2 : f.hpos === "mitte" ? b/2 : fb/2);
+    const heightAtCenter = ks + (xc - (b/2 - xc < 0 ? (xc - b/2) : 0)) * Math.tan(deg2rad(slope)); // simplified
+    volume -= (fb * fl) * Math.min(heightAtCenter, dh);
+  });
+  // Add Gauben volume (flat ceiling height)
+  (gauben || []).forEach(g => {
+    const dt = Math.max(0, Math.min(g.tiefe, b / 2));
+    const db = Math.max(0, Math.min(g.width, l));
+    if (dt <= 0 || db <= 0) return;
+    const H = ks + dt * Math.tan(deg2rad(slope));
+    volume += (db * dt) * H;
+  });
+
+  return { a1, a2, a22, dh, area1, area2, area3, area4, total, clean, volume };
 }
 
 // ---------- DOM ----------
@@ -714,6 +736,7 @@ function renderTable() {
     ["Fläche < 2 m [m²]", r.area2],
     ["Fläche ≥ 2 m [m²]", r.area3],
     ["Fläche gesamt [m²]", r.total],
+    ["Volumen [m³]", r.volume],
   ];
   const row = ([n,v]) => `<tr><td class="name">${n}</td><td class="num">${fmt(v,2)}</td></tr>`;
   $("laengenBody").innerHTML = laengen.map(row).join("");
